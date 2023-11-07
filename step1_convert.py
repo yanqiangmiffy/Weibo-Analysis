@@ -15,7 +15,7 @@ def convert2parquet():
 
 def concat_parquet():
     dfs=[]
-    for par_file in tqdm(os.listdir('data')):
+    for par_file in tqdm(os.listdir('data')[:3]):
         try:
             tmp=pd.read_parquet(f'data/{par_file}')
             dfs.append(tmp)

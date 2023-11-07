@@ -1,3 +1,4 @@
+import os
 import re
 import jieba  # 中文分词包
 import jieba.analyse as analyse  # 关键字提取
@@ -5,17 +6,21 @@ import pandas as pd
 from tqdm import tqdm
 from wordcloud import WordCloud
 from weibo_preprocess_toolkit import WeiboPreprocess
+from snownlp import SnowNLP
 
 from utils import parallelize_on_rows
+from jieba import analyse
+
 tqdm.pandas()
 preprocess = WeiboPreprocess()
 
+stop_words=[]
+for words_file in os.listdir('models/stop_words'):
+    with open(f'models/stop_words/{words_file}', 'r', encoding='utf-8') as f:
+        tmp=f.readlines()
+        stop_words+=[w.strip() for w in tmp]
 
-with open('models/stop_words.txt','r',encoding='utf-8') as f:
-    stop_words=f.readlines()
-    stop_words=[w.strip() for w in stop_words]
-
-
+stop_words=list(set(stop_words))
 class Processor():
     def clean_special(self, text):
         """
@@ -34,7 +39,7 @@ class Processor():
             r'(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s('
             r')<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:\'".,<>?«»“”‘’]))',
             re.IGNORECASE)
-        text = re.sub(URL_REGEX, "", text)  # 去除网址
+        # text = re.sub(URL_REGEX, "", text)  # 去除网址 会出现死循环
         text = text.replace("转发微博", "")  # 去除无意义的词语
         text = re.sub(r"\s+", " ", text)  # 合并正文中过多的空格
         return text.strip()
@@ -64,11 +69,27 @@ class Processor():
         remove_chars = '[·’!"\#$%&\'()＃！（）*+,-./:;<=>?\@，：?￥★、…．＞【】［］《》？“”‘’\[\\]^_`{|}~]+'
         text = re.sub(remove_chars, "", text)
         return text
+    def replace_special(self,text):
+        text=text.replace('\u200b','')
+        return text
     def process(self, text):
+        # print("----"*10)
+        # print(text)
+        # text=text.rstrip('http')
         text = self.delete_html(text)
+        # print("delete_html",text)
         text = self.clean_special(text)
+        # print("clean_special",text)
+
         text=self.delete_num_alpa(text)
+        # print("delete_num_alpa",text)
+
         text=self.delte_special_token(text)
+        # print("delte_special_token",text)
+
+        text=self.replace_special(text)
+        # print("replace_special",text)
+
         return text
 
 
@@ -89,32 +110,33 @@ def jieba_count_tf(words):
 
 
 def cut_df_words(row):
-    text_words = jieba.cut(row['text'], cut_all=False)
-    text_words = [w for w in text_words]
+    # text_words = jieba.cut(row['text'], cut_all=False)
+    text_words = jieba.lcut_for_search(row['text'])
+    # text_words = [w for w in text_words]
+    # text_words=[w for w in analyse.tfidf(row['text'])]
     return text_words
 
+def infer_sentiment(row):
+    sn=SnowNLP(row['text'])
+    return sn.sentiments
 
 if __name__ == '__main__':
-    df = pd.read_parquet('data/1_filter.parquet')
-    cols = ['wid', 'text', 'forward_nums', 'review_nums', 'upvote', 'domain', 'date']
-    df.columns = cols
-    # print(df.head(1).values)
-    # print(df.columns)
-    # print(df.head())
-    # print(df.shape)
+    df = pd.read_parquet('data/10_filter.parquet')
+    print(df.columns)
+    print(df.head())
+    print(df.shape)
 
     text_processor = Processor()
     print(df.isnull().sum())
-    df['text_len'] = df['text'].apply(lambda x: len(str(x)))
-    print(df['text_len'].describe())
-
+    df['raw_text'] = df['text'].copy()
+    df['token_nums'] = df['text'].apply(lambda x: len(str(x)))
+    df=df.sort_values(by=["token_nums"],ascending=False)
     df['text'] = df['text'].progress_apply(lambda x: text_processor.process(x))
-    df['text_len'] = df['text'].apply(lambda x: len(str(x)))
-    print(df['text_len'].describe())
-
     df['text_words'] = parallelize_on_rows(df, cut_df_words, num_of_processes=24)
+    df['sentiment'] = parallelize_on_rows(df, infer_sentiment, num_of_processes=24)
+    df['num_words'] = df['text_words'].apply(lambda x: len(x))
 
-    # words = cut_df_words(df)
+    df.to_csv('output/demo.csv',index=False)
     words = []
     for text_words in df['text_words']:
         words.extend(text_words)
@@ -124,14 +146,12 @@ if __name__ == '__main__':
     tfs = jieba_count_tf(words)
     # 形成表格数据
     df = pd.DataFrame(data=list(zip(list(tfs.keys()), list(tfs.values()))), columns=['单词', '频数'])
+    df=df.sort_values(by='频数',ascending=False)
     df.to_csv('output/word_cnt.csv', index=False)
-    # # 关键字分析
-    # tfidf_fre = analyse.extract_tags(text, topK=100, withWeight=True, allowPOS=(), withFlag=True)
-    # # 形成表格数据
-    # df = pd.DataFrame(data=tfidf_fre, columns=['单词', 'tf-idf'])
 
-    # 生成词云图展示
-    # alice_mask = np.array(Image.open('test.png'))  # 使用图片作为背景
+
+
+
     font_path = 'C:\Windows\Fonts\simfang.ttf'  # 设置文本路径
     # 创建图云对象
     wc = WordCloud(font_path=font_path, background_color='white',
@@ -140,4 +160,4 @@ if __name__ == '__main__':
                    width=800, height=400, stopwords=None)
     wc.fit_words(dict(zip(df['单词'], df['频数'])))  # 输入词频字典，或者 {词：tf-idf}
     wc_img = wc.to_image()  # 输出为图片对象
-    wc.to_file("alice.png")
+    wc.to_file("output/alice.png")
