@@ -10,9 +10,11 @@ from snownlp import SnowNLP
 
 from utils import parallelize_on_rows
 from jieba import analyse
+from utils import TopicClassifier
 
 tqdm.pandas()
 preprocess = WeiboPreprocess()
+tc=TopicClassifier()
 
 stop_words=[]
 for words_file in os.listdir('models/stop_words'):
@@ -120,6 +122,12 @@ def infer_sentiment(row):
     sn=SnowNLP(row['text'])
     return sn.sentiments
 
+def infer_topic(row):
+    sn=tc.predict(" ".join(row['text_words']))
+    return sn
+# def infer_topic(text_words):
+#     sn=tc.predict(" ".join(text_words))
+#     return sn
 if __name__ == '__main__':
     df = pd.read_parquet('data/10_filter.parquet')
     print(df.columns)
@@ -132,8 +140,15 @@ if __name__ == '__main__':
     df['token_nums'] = df['text'].apply(lambda x: len(str(x)))
     df=df.sort_values(by=["token_nums"],ascending=False)
     df['text'] = df['text'].progress_apply(lambda x: text_processor.process(x))
+
     df['text_words'] = parallelize_on_rows(df, cut_df_words, num_of_processes=24)
+    print("jieba cut done!")
     df['sentiment'] = parallelize_on_rows(df, infer_sentiment, num_of_processes=24)
+    print("sentiment done!")
+    df['topic'] = parallelize_on_rows(df, infer_topic, num_of_processes=12)
+    print("topic done!")
+    # df['topic'] = df['text_words'].progress_apply(lambda x: infer_topic(x))
+
     df['num_words'] = df['text_words'].apply(lambda x: len(x))
 
     df.to_csv('output/demo.csv',index=False)
@@ -156,8 +171,8 @@ if __name__ == '__main__':
     # 创建图云对象
     wc = WordCloud(font_path=font_path, background_color='white',
                    # mask=alice_mask,
-                   max_words=400,
-                   width=800, height=400, stopwords=None)
+                   max_words=800,
+                   width=1600, height=800, stopwords=None)
     wc.fit_words(dict(zip(df['单词'], df['频数'])))  # 输入词频字典，或者 {词：tf-idf}
     wc_img = wc.to_image()  # 输出为图片对象
     wc.to_file("output/alice.png")
