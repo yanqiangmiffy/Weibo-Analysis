@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 plt.rcParams["font.sans-serif"]=["SimHei"] #设置字体
 plt.rcParams["axes.unicode_minus"]=False #该语句解决图像中的“-”负号的乱码问题
 pd.set_option('display.max_columns', 20)
-demo=pd.read_csv('output/demo_bak.csv')
+demo=pd.read_csv('output/demo_zhongmei2022.csv')
 print(demo.columns)
 print(demo.head())
 print(demo.shape)
@@ -26,9 +26,10 @@ def judge_country(x):
     else:
         return '其他'
 
-
 demo['country']=demo['raw_text'].apply(lambda x:judge_country(x))
 demo['country'].value_counts().plot(kind='pie')
+print(demo['country'].value_counts())
+
 plt.legend()
 plt.show()
 

@@ -1,28 +1,32 @@
 import os
 import re
-import jieba  # 中文分词包
-import jieba.analyse as analyse  # 关键字提取
+
 import pandas as pd
-from tqdm import tqdm
-from wordcloud import WordCloud
-from weibo_preprocess_toolkit import WeiboPreprocess
+from pandarallel import pandarallel
 from snownlp import SnowNLP
+from tqdm import tqdm
+from weibo_preprocess_toolkit import WeiboPreprocess
+from wordcloud import WordCloud
 
-from utils import parallelize_on_rows
-from jieba import analyse
 from utils import TopicClassifier
+from utils import parallelize_on_rows
 
+pandarallel.initialize()
+import jieba  # 中文分词包
+from jieba import  lcut_for_search
 tqdm.pandas()
 preprocess = WeiboPreprocess()
-tc=TopicClassifier()
+tc = TopicClassifier()
 
-stop_words=[]
+stop_words = []
 for words_file in os.listdir('models/stop_words'):
     with open(f'models/stop_words/{words_file}', 'r', encoding='utf-8') as f:
-        tmp=f.readlines()
-        stop_words+=[w.strip() for w in tmp]
+        tmp = f.readlines()
+        stop_words += [w.strip() for w in tmp]
 
-stop_words=list(set(stop_words))
+stop_words = list(set(stop_words))
+
+
 class Processor():
     def clean_special(self, text):
         """
@@ -56,11 +60,12 @@ class Processor():
         new_text = re.sub("-+", "--", new_text)  # 合并-
         text_content = re.sub("———+", "———", new_text)  # 合并-
         return text_content
-    def delete_num_alpa(self,text):
-        text=re.sub(r'[0-9]+', '', text)
-        return  text
 
-    def delte_special_token(self,text):
+    def delete_num_alpa(self, text):
+        text = re.sub(r'[0-9]+', '', text)
+        return text
+
+    def delte_special_token(self, text):
         """
         去除标点符号以及href连接
         :param text:
@@ -71,9 +76,11 @@ class Processor():
         remove_chars = '[·’!"\#$%&\'()＃！（）*+,-./:;<=>?\@，：?￥★、…．＞【】［］《》？“”‘’\[\\]^_`{|}~]+'
         text = re.sub(remove_chars, "", text)
         return text
-    def replace_special(self,text):
-        text=text.replace('\u200b','')
+
+    def replace_special(self, text):
+        text = text.replace('\u200b', '')
         return text
+
     def process(self, text):
         # print("----"*10)
         # print(text)
@@ -83,13 +90,13 @@ class Processor():
         text = self.clean_special(text)
         # print("clean_special",text)
 
-        text=self.delete_num_alpa(text)
+        text = self.delete_num_alpa(text)
         # print("delete_num_alpa",text)
 
-        text=self.delte_special_token(text)
+        text = self.delte_special_token(text)
         # print("delte_special_token",text)
 
-        text=self.replace_special(text)
+        text = self.replace_special(text)
         # print("replace_special",text)
 
         return text
@@ -112,26 +119,30 @@ def jieba_count_tf(words):
 
 
 def cut_df_words(row):
-    # text_words = jieba.cut(row['text'], cut_all=False)
-    text_words = jieba.lcut_for_search(row['text'])
+    text_words = jieba.cut(row['text'], cut_all=False)
+    # text_words = lcut_for_search(row['text'])
     # text_words = [w for w in text_words]
     # text_words=[w for w in analyse.tfidf(row['text'])]
     return text_words
 
+
 def infer_sentiment(row):
-    sn=SnowNLP(row['text'])
+    sn = SnowNLP(row['text'])
     return sn.sentiments
 
+
 def infer_topic(row):
-    sn=tc.predict(" ".join(row['text_words']))
+    sn = tc.predict(" ".join(row['text_words']))
     return sn
+
+
 # def infer_topic(text_words):
 #     sn=tc.predict(" ".join(text_words))
 #     return sn
 if __name__ == '__main__':
     # df = pd.read_parquet('data/10_filter.parquet')
     df = pd.read_csv('E:/Jiajun/version231108/processed/zhongmei2022.csv')
-    df.rename(columns={'content_concat':'text'},inplace=True)
+    df.rename(columns={'content_concat': 'text'}, inplace=True)
     print(df.columns)
     print(df.head())
     print(df.shape)
@@ -140,10 +151,12 @@ if __name__ == '__main__':
     print(df.isnull().sum())
     df['raw_text'] = df['text'].copy()
     df['token_nums'] = df['text'].apply(lambda x: len(str(x)))
-    df=df.sort_values(by=["token_nums"],ascending=False)
+    df = df.sort_values(by=["token_nums"], ascending=False)
     df['text'] = df['text'].progress_apply(lambda x: text_processor.process(x))
 
-    df['text_words'] = parallelize_on_rows(df, cut_df_words, num_of_processes=32)
+    # df['text_words'] = parallelize_on_rows(df, cut_df_words, num_of_processes=32)
+    res_parallel = df.parallel_apply(cut_df_words, axis=1)
+    df['text_words'] = res_parallel
     print("jieba cut done!")
     df['sentiment'] = parallelize_on_rows(df, infer_sentiment, num_of_processes=32)
     print("sentiment done!")
@@ -153,7 +166,7 @@ if __name__ == '__main__':
 
     df['num_words'] = df['text_words'].apply(lambda x: len(x))
 
-    df.to_csv('output/demo.csv',index=False)
+    df.to_csv('output/demo.csv', index=False)
     words = []
     for text_words in df['text_words']:
         words.extend(text_words)
@@ -163,11 +176,8 @@ if __name__ == '__main__':
     tfs = jieba_count_tf(words)
     # 形成表格数据
     df = pd.DataFrame(data=list(zip(list(tfs.keys()), list(tfs.values()))), columns=['单词', '频数'])
-    df=df.sort_values(by='频数',ascending=False)
+    df = df.sort_values(by='频数', ascending=False)
     df.to_csv('output/word_cnt.csv', index=False)
-
-
-
 
     font_path = 'C:\Windows\Fonts\simfang.ttf'  # 设置文本路径
     # 创建图云对象
