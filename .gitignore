@@ -6,3 +6,4 @@ output/demo.csv
 output/*.csv
 fasttext_cls/*.bin
 fasttext_cls/fasttext.train_fold*
+models
