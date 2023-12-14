@@ -7,3 +7,5 @@ output/*.csv
 fasttext_cls/*.bin
 fasttext_cls/fasttext.train_fold*
 models
+output/weibo_analysis.parquet
+output/task1

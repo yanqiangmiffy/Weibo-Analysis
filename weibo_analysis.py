@@ -12,7 +12,7 @@ from wordcloud import WordCloud
 from utils import TopicClassifier
 from utils import parallelize_on_rows
 from utils_bert import inference
-
+from collections import Counter
 tqdm.pandas()
 preprocess = WeiboPreprocess()
 tc = TopicClassifier()
@@ -154,12 +154,20 @@ class WeiboAnalysis(object):
 
     def parse_words(self, df, save_cnt, save_img):
         words = []
-        for text_words in df['text_words']:
-            words.extend(text_words)
+        for text_words in tqdm(df['text_words']):
+            for word in eval(text_words):
+                # if len(word.strip())>=2 and word.strip() not in stop_words:
+                if len(word.strip())>=2:
+                    words.append(word)
 
         print(words[:10])
+        df=pd.DataFrame(data={'words':words})
+        print(df.shape)
+        words=df[~df['words'].isin(stop_words)]['words'].values.tolist()
 
-        tfs = self.jieba_count_tf(words)
+        # tfs = self.jieba_count_tf(words)
+        tfs=Counter(words)
+        print(tfs.most_common(20))
         # 形成表格数据
         df = pd.DataFrame(data=list(zip(list(tfs.keys()), list(tfs.values()))), columns=['单词', '频数'])
         df = df.sort_values(by='频数', ascending=False)
