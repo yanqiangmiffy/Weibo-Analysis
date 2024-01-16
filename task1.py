@@ -1,11 +1,10 @@
 import os
+import time
 from datetime import datetime
 
 import matplotlib
 import matplotlib.pyplot as plt
 import pandas as pd
-import time
-from weibo_analysis import WeiboAnalysis
 
 matplotlib.rcParams['font.sans-serif'] = ['SimHei']  # 用黑体显示中文
 matplotlib.rcParams['axes.unicode_minus'] = False  # 正常显示负号
@@ -37,16 +36,17 @@ def process():
     df['time'] = df['time'].apply(
         lambda x: x.strip().replace(r'\n', '').replace(r'\n                        ', '').replace(r'\n', '').strip())
     df[['year', 'month', 'timestamp']] = df.apply(lambda row: get_year_month(row['time']), axis=1, result_type='expand')
-    df.to_parquet('output/task1/weibo_analysis.parquet', index=None)
+    # df.to_parquet('output/task1/weibo_analysis.parquet', index=None)
 
     # ['_id', 'nickname', 'time', 'from', 'content', 'content_full',
     #        'user_link', 'forward_nickname', 'forward_uid', 'forward_content',
     #        'text', 'raw_text', 'token_nums', 'text_words', 'sentiment', 'topic',
     #        'num_words', 'category']
-
-    for topic in df['topic'].unique():
+    for topic,group in df.groupby(by='topic'):
+    # for topic in df['topic'].unique():
         print(topic)
-        df[df['topic'] == topic].to_parquet(f'output/task1/{topic}.parquet', index=None)
+        # df[df['topic'] == topic].to_parquet(f'output/task1/{topic}.parquet', index=None)
+        group.to_csv(f'output/task1/{topic}.csv', index=None)
 
 
 def get_year_month(date_str):
@@ -66,7 +66,7 @@ def get_year_month(date_str):
     return year, month, timestamp
 
 
-def plot_weibo_month(df, is_vs=False,save_img=''):
+def plot_weibo_month(df, is_vs=False, save_img=''):
     # 示例数据（在实际应用中，您需要替换为您的实际数据）
     # data = {
     #     'date': ['2022-01-01', '2022-01-02', '2022-02-01', '2022-02-02', '2022-03-01'],
@@ -80,21 +80,25 @@ def plot_weibo_month(df, is_vs=False,save_img=''):
     # print(df['date'])
     # print(df['month'])
     # 按月份汇总微博条数
+    df['year_month'] = pd.to_datetime(df['timestamp'], unit='s').dt.strftime('%Y-%m')
+    print(df['year_month'].value_counts())
     monthly_counts = df.groupby('year_month')['_id'].count()
     if is_vs:
         monthly_counts = df.groupby('year_month')['_id'].count() / df[df['year_month'] == '2011-8'].shape[0]
     # 绘制趋势图
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(40, 20))
     monthly_counts.plot(kind='line', marker='o')
+    plt.xticks(rotation=90)
+
     plt.title('微博条数月度趋势图')
     plt.xlabel('月份')
     plt.ylabel('微博条数')
     plt.grid(True)
-    plt.savefig(save_img,format='png',dpi=300)
+    plt.savefig(save_img, format='png', dpi=300)
     # plt.show()
 
 
-def plot_weibo_week(df, is_vs,save_img=''):
+def plot_weibo_week(df, is_vs, save_img=''):
     df['date'] = pd.to_datetime(df['timestamp'], unit='s')
 
     week_dfs = []
@@ -116,13 +120,13 @@ def plot_weibo_week(df, is_vs,save_img=''):
         print(cnt)
         week_df['num_posts'] = week_df['num_posts'] / cnt
     # print(week_df['num_posts'])
-    week_df['week'] = week_df.index
+    # week_df['week'] = week_df.index
     # 绘制趋势图
-    plt.figure(figsize=(20, 10))
+    plt.figure(figsize=(80, 20))
     plt.plot(week_df['week'], week_df['num_posts'], marker='o', color='teal', linewidth=2, markersize=8)
     # plt.xticks([])
 
-    # plt.xticks(rotation=80)
+    plt.xticks(rotation=90)
     # 设置图表标题和坐标轴标签
     plt.title('每周微博条数趋势', fontsize=2)
     plt.xlabel('星期', fontsize=2)
@@ -133,36 +137,45 @@ def plot_weibo_week(df, is_vs,save_img=''):
 
     # 显示网格
     plt.grid(True, which='both', linestyle='--', linewidth=0.5)
-    plt.savefig(save_img,format='png',dpi=300)
+    plt.savefig(save_img, format='png', dpi=300)
 
     # 显示图形
     # plt.show()
 
 
-def plot_weibo_day(df, is_vs=False,save_img=''):
+def plot_weibo_day(df, is_vs=False, save_img='', topic=''):
     from matplotlib.ticker import AutoMinorLocator
 
-    df['date'] = pd.to_datetime(df['timestamp'], unit='s')
-    df['year'] = df['date'].dt.year
-    df['month'] = df['date'].dt.month
-    df['day'] = df['date'].dt.day
-    df['year_month_day'] = df['year'].astype(str) + '-' + df['month'].astype(str) + '-' + df['day'].astype(str)
+    df['year_month_day'] = pd.to_datetime(df['timestamp'], unit='s').dt.strftime('%Y-%m-%d')
+    # df['year'] = df['date'].dt.year
+    # df['month'] = df['date'].dt.month
+    # df['day'] = df['date'].dt.day
+    # df['year_month_day'] = df['year'].astype(str) + '-' + df['month'].astype(str) + '-' + df['day'].astype(str)
+    # df['year_month_day'] = df['year'].astype(str) + '-' + df['month'].astype(str) + '-' + df['day'].astype(str)
+
+
     print(df['year_month_day'])
     monthly_counts = df.groupby(['year_month_day'])['_id'].count()
+
+    df = monthly_counts.reset_index()
+    df.rename(columns={'_id': 'count'}, inplace=True)
+    df.to_csv(f'output/task1/{topic}_day_counts.csv', index=None)
+
     if is_vs:
         cnt = df[df['year_month_day'] == '2011-8-3'].size
         print(cnt)
         monthly_counts = monthly_counts / cnt
     # 绘制趋势图
-    plt.figure(figsize=(25, 15))
+    plt.figure(figsize=(80, 15))
     monthly_counts.plot(kind='line', marker='o')
+    plt.xticks(rotation=90)
     plt.title('微博条数每天趋势图')
     plt.xlabel('日期')
     plt.ylabel('微博条数')
     plt.gca().xaxis.set_minor_locator(AutoMinorLocator(5))  # 在每个主要刻度之间添加两个次要刻度
     plt.gca().yaxis.set_minor_locator(AutoMinorLocator(2))  # 同样操作应用于y轴
     plt.grid(True)
-    plt.savefig(save_img,format='png',dpi=300)
+    plt.savefig(save_img, format='png', dpi=300)
 
     # plt.show()
 
@@ -224,6 +237,7 @@ def plot_text_lens(df_sample, mode='Characters'):
         plt.tight_layout()
         plt.show()
 
+
 def plot_text_forwards(df_sample):
     # 创建示例 DataFrame
     df_sample['date'] = pd.to_datetime(df_sample['timestamp'], unit='s')
@@ -260,20 +274,30 @@ def plot_text_forwards(df_sample):
     plt.tight_layout()
     plt.show()
 
+concat()
+process()
 df = pd.read_parquet('output/task1/weibo_analysis.parquet')
-df['year_month'] = df['year'].astype(int).astype(str) + '-' + df['month'].astype(int).astype(str)
+df = df.sort_values(by=['timestamp'], ascending=True)
 
+topic = '全部'
+plot_weibo_month(df, is_vs=False, save_img=f'output/task1/2-a)-{topic}.png')
+plot_weibo_month(df, is_vs=True, save_img=f'output/task1/2-b)-{topic}.png')
 
+plot_weibo_week(df, is_vs=False, save_img=f'output/task1/2-c)-{topic}.png')
+plot_weibo_week(df, is_vs=True, save_img=f'output/task1/2-d)-{topic}.png')
+
+plot_weibo_day(df, is_vs=False, save_img=f'output/task1/2-e)-{topic}.png', topic=topic)
+plot_weibo_day(df, is_vs=True, save_img=f'output/task1/2-f)-{topic}.png', topic=topic)
 for topic in df['topic'].unique():
-    topic_df=df[df['topic']==topic].reset_index(drop=True)
-    plot_weibo_month(topic_df,is_vs=False,save_img=f'output/task1/2-a)-{topic}.png')
-    plot_weibo_month(topic_df,is_vs=True,save_img=f'output/task1/2-b)-{topic}.png')
+    topic_df = df[df['topic'] == topic].reset_index(drop=True)
+    plot_weibo_month(topic_df, is_vs=False, save_img=f'output/task1/2-a)-{topic}.png')
+    plot_weibo_month(topic_df, is_vs=True, save_img=f'output/task1/2-b)-{topic}.png')
 
-    plot_weibo_week(topic_df, is_vs=False, save_img=f'output/task1/2-a)-{topic}.png')
-    plot_weibo_week(topic_df, is_vs=True, save_img=f'output/task1/2-b)-{topic}.png')
+    plot_weibo_week(topic_df, is_vs=False, save_img=f'output/task1/2-c)-{topic}.png')
+    plot_weibo_week(topic_df, is_vs=True, save_img=f'output/task1/2-d)-{topic}.png')
 
-    plot_weibo_day(topic_df, is_vs=False, save_img=f'output/task1/2-a)-{topic}.png')
-    plot_weibo_day(topic_df, is_vs=True, save_img=f'output/task1/2-b)-{topic}.png')
+    plot_weibo_day(topic_df, is_vs=False, save_img=f'output/task1/2-e)-{topic}.png', topic=topic)
+    plot_weibo_day(topic_df, is_vs=True, save_img=f'output/task1/2-f)-{topic}.png', topic=topic)
     time.sleep(1)
 # wa = WeiboAnalysis()
 # wa.parse_words(df[df['topic'] == '时政'], save_cnt='output/task1/4_word_cnt.csv',
