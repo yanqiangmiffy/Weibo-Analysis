@@ -10,6 +10,7 @@ from tqdm import tqdm
 from weibo_preprocess_toolkit import WeiboPreprocess
 from wordcloud import WordCloud
 
+from rough_rules import *
 from utils import TopicClassifier
 from utils import parallelize_on_rows
 from utils_bert import inference
@@ -227,14 +228,11 @@ class WeiboAnalysis(object):
         df['num_words'] = df['text_words'].apply(lambda x: len(x))
         loguru.logger.info(df['num_words'])
 
-
         loguru.logger.info("jieba cut done!")
         df['sentiment'] = parallelize_on_rows(df, self.infer_sentiment, num_of_processes=32)
         loguru.logger.info("sentiment done!")
         df['topic'] = parallelize_on_rows(df, self.infer_topic, num_of_processes=32)
         loguru.logger.info("topic done!")
-
-
 
         # 后处理label
         df['topic'] = df['topic'].apply(lambda x: self.set_label(x))
@@ -244,13 +242,55 @@ class WeiboAnalysis(object):
         loguru.logger.info("inference done!")
         df.to_csv(save_file, index=False)
 
+    def rough_cls(self, csv_path):
+        filenames = csv_path.split('\\')
+        filename = filenames[-1].replace('.csv', '')
+        process_dir = r'C:\Users\sibo\Desktop\rough_cls'
+        process_dir = os.path.join(process_dir, filenames[-2])
+        os.makedirs(process_dir, exist_ok=True)
+        save_file = os.path.join(process_dir, filenames[-1])
+        if '.csv' not in filenames[-1]:
+            save_file = os.path.join(process_dir, filenames[-1]+'.csv')
+
+        save_file2 = os.path.join(process_dir, filename+'_filtered.csv')
+        loguru.logger.info(filenames)
+        loguru.logger.info(csv_path)
+        loguru.logger.info(filename)
+        loguru.logger.info(process_dir)
+        loguru.logger.info(save_file)
+        loguru.logger.info(save_file2)
+
+        # # 加载csv数据
+        df = pd.read_csv(csv_path)
+        df = self.process_content(df)
+
+        df['official_gov'] = df.apply(lambda row: judge_oficial(row), axis=1)
+        df['news_outlet'] = df.apply(lambda row: judge_news_outlet(row), axis=1)
+        df['auto_retweet'] = df.apply(lambda row: judge_ato_retweet(row), axis=1)
+        df['from_chaohua'] = df.apply(lambda row: judge_chaohua(row), axis=1)
+        df['all_categories'] = (
+                df[['official_gov', 'news_outlet', 'auto_retweet', 'from_chaohua']].sum(axis=1) >= 1).astype(int)
+        df.to_csv(save_file, index=False)
+        # 筛选all_categories为0的行
+        filtered_df = df[df['all_categories'] == 0]
+
+        # 保存uid和微博内容到新文件
+        filtered_df[['_id', 'nickname', 'time', 'content', 'content_full', 'text']].to_csv(save_file2,
+                                                                                           index=False,
+                                                                                          )
+
+        print(f"完成了! 筛选后的数据已保存为 '{save_file2}'.")
+
 
 if __name__ == '__main__':
     base_dir = r'C:\Users\sibo\Desktop\raw_data'
-    process_dir = r'C:\Users\sibo\Desktop\processed'
+    process_dir = r'C:\Users\sibo\Desktop\rough_cls'
     for dir in os.listdir(base_dir):
-        if dir.startswith('201'):
-            exies = os.listdir(os.path.join(process_dir, dir))
+        if dir.startswith('2'):
+            try:
+                exies = os.listdir(os.path.join(process_dir, dir))
+            except:
+                exies=[]
             print(exies)
             for csv_file in os.listdir(os.path.join(base_dir, dir)):
                 # if csv_file not in exies:
@@ -260,20 +300,10 @@ if __name__ == '__main__':
                         csv_path = os.path.join(base_dir, dir, csv_file)
                         print(csv_path)
                         wa = WeiboAnalysis()
-                        wa.parser(csv_path=csv_path)
+                        wa.rough_cls(csv_path=csv_path)
                     except Exception as e:
                         loguru.logger.error(e)
                         loguru.logger.error("报错")
 
-
-
     # wa = WeiboAnalysis()
-    # wa.parser(csv_path=r'C:\Users\sibo\Desktop\raw_data\2016\201602')
-
-    # df=pd.read_csv(r'C:\Users\sibo\Desktop\raw_data\2022\202201.csv')
-    # text_processor = Processor()
-    #
-    # df=wa.process_content(df)
-    # df['text'] = df['text'].progress_apply(lambda x: text_processor.process(x))
-    #
-    # inference(df)
+    # wa.rough_cls(csv_path=r'C:\Users\sibo\Desktop\raw_data\2016\201602')
