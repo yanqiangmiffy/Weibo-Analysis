@@ -281,29 +281,49 @@ class WeiboAnalysis(object):
 
         print(f"完成了! 筛选后的数据已保存为 '{save_file2}'.")
 
+    def extract_uid(self, link):
+        match = re.search(r'weibo\.com/(\d+)', link)
+        return match.group(1) if match else None
 
+    def rough_merge_cls(self, csv_path):
+        filenames = csv_path.split('\\')
+        filename = filenames[-1].replace('.csv', '')
+        process_dir = r'C:\Users\sibo\Desktop\rough_cls_v2'
+        process_dir = os.path.join(process_dir, filenames[-2])
+        os.makedirs(process_dir, exist_ok=True)
+        if len(filenames[-1]) == 10:
+            save_file = os.path.join(process_dir, filename + '_filtered.csv')
+            print(csv_path,filenames,filename,process_dir,save_file)
+            df = pd.read_csv(csv_path)
+            df = df[df['all_categories'] == 0].reset_index(drop=True)
+            # 应用这个函数到每一个链接
+            df['uid'] = df['user_link'].apply(self.extract_uid)
+            df=df.merge(usergeo,on="uid",how="left")
+            del df['Unnamed: 0']
+            df.to_csv(save_file, index=False)
+            del df
 if __name__ == '__main__':
-    base_dir = r'C:\Users\sibo\Desktop\raw_data'
-    process_dir = r'C:\Users\sibo\Desktop\rough_cls'
+    # base_dir = r'C:\Users\sibo\Desktop\raw_data'
+    base_dir = r'C:\Users\sibo\Desktop\rough_cls'
+    process_dir = r'C:\Users\sibo\Desktop\rough_cls_v2'
+
+    usergeo=pd.read_csv('data/usergeo.csv', dtype={'uid': str})
     for dir in os.listdir(base_dir):
         if dir.startswith('2'):
             try:
                 exies = os.listdir(os.path.join(process_dir, dir))
             except:
                 exies=[]
-            print(exies)
             for csv_file in os.listdir(os.path.join(base_dir, dir)):
                 # if csv_file not in exies:
                 if csv_file not in []:
                 # if csv_file.endswith('.csv'):
                     try:
                         csv_path = os.path.join(base_dir, dir, csv_file)
-                        print(csv_path)
                         wa = WeiboAnalysis()
-                        wa.rough_cls(csv_path=csv_path)
+                        wa.rough_merge_cls(csv_path=csv_path)
                     except Exception as e:
                         loguru.logger.error(e)
                         loguru.logger.error("报错")
-
     # wa = WeiboAnalysis()
     # wa.rough_cls(csv_path=r'C:\Users\sibo\Desktop\raw_data\2016\201602')
