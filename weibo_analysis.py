@@ -250,9 +250,9 @@ class WeiboAnalysis(object):
         os.makedirs(process_dir, exist_ok=True)
         save_file = os.path.join(process_dir, filenames[-1])
         if '.csv' not in filenames[-1]:
-            save_file = os.path.join(process_dir, filenames[-1]+'.csv')
+            save_file = os.path.join(process_dir, filenames[-1] + '.csv')
 
-        save_file2 = os.path.join(process_dir, filename+'_filtered.csv')
+        save_file2 = os.path.join(process_dir, filename + '_filtered.csv')
         loguru.logger.info(filenames)
         loguru.logger.info(csv_path)
         loguru.logger.info(filename)
@@ -277,7 +277,7 @@ class WeiboAnalysis(object):
         # 保存uid和微博内容到新文件
         filtered_df[['_id', 'nickname', 'time', 'content', 'content_full', 'text']].to_csv(save_file2,
                                                                                            index=False,
-                                                                                          )
+                                                                                           )
 
         print(f"完成了! 筛选后的数据已保存为 '{save_file2}'.")
 
@@ -286,6 +286,7 @@ class WeiboAnalysis(object):
         return match.group(1) if match else None
 
     def rough_merge_cls(self, csv_path):
+        # usergeo = pd.read_csv('data/usergeo.csv', dtype={'uid': str})
         filenames = csv_path.split('\\')
         filename = filenames[-1].replace('.csv', '')
         process_dir = r'C:\Users\sibo\Desktop\rough_cls_v2'
@@ -293,37 +294,118 @@ class WeiboAnalysis(object):
         os.makedirs(process_dir, exist_ok=True)
         if len(filenames[-1]) == 10:
             save_file = os.path.join(process_dir, filename + '_filtered.csv')
-            print(csv_path,filenames,filename,process_dir,save_file)
+            print(csv_path, filenames, filename, process_dir, save_file)
             df = pd.read_csv(csv_path)
             df = df[df['all_categories'] == 0].reset_index(drop=True)
             # 应用这个函数到每一个链接
             df['uid'] = df['user_link'].apply(self.extract_uid)
-            df=df.merge(usergeo,on="uid",how="left")
+            df = df.merge(usergeo, on="uid", how="left")
             del df['Unnamed: 0']
             df.to_csv(save_file, index=False)
             del df
+
+    def merge_geo_national(self, csv_path):
+        """
+        task-20240215.docx
+        1.匹配usergeo.csv
+            a)使用桌面usergeo0206.csv与E:\Jiajun\sentiment\nationality_cls的“日期_filter_sna.csv”进行匹配。
+            b)“日期_filter_sna.csv”中有同名变量（即uid与category之间的列），请先将同名变量删除。
+        2.提取变量和数据集
+            a)将每个数据集中category==5的行删除
+            b)只保留以下列：
+            i.uid, nickname, time, from, text, dis_location, dis_ip, city, geo, category, dis_gender, PosEmo, NegEmo
+            c)将新数据集保存为“日期_cat_1to4.csv”
+            d)将全部“日期_cat_1to4.csv”合并为“cat_1to4.csv”
+        :param csv_path:
+        :return:
+        """
+        filenames = csv_path.split('\\')
+        filename = filenames[-1].replace('.csv', '')
+        process_dir = r'E:\Jiajun\sentiment\merge_geo'
+        process_dir = os.path.join(process_dir, filenames[-2])
+        # print(process_dir)
+        os.makedirs(process_dir, exist_ok=True)
+        print(filenames)
+        if len(filenames[-1]) == 21:
+            save_file = os.path.join(process_dir, filename.split('_')[0] + '_cat_1to4.csv')
+            print(csv_path, filenames, filename, process_dir, save_file)
+            df = pd.read_csv(csv_path, dtype={'uid': str})
+            df = df[df['all_categories'] != 5].reset_index(drop=True)
+            # print(df.columns)
+            # 应用这个函数到每一个链接
+            # df['uid'] = df['user_link'].apply(self.extract_uid)
+            # 确定重复列（即df1和df2中都存在的列，除了用于合并的键）
+            columns_to_remove = usergeo.columns.intersection(df.columns).drop('uid')
+            # 从df2中删除这些重复列
+            df2_reduced = df.drop(columns=columns_to_remove)
+            df2_reduced = df2_reduced.merge(usergeo, on="uid", how="left")
+            keep_cols = [
+                'uid',
+                'nickname',
+                'time',
+                'from',
+                'text',
+                'dis_location',
+                'dis_ip',
+                'city',
+                'geo',
+                'category',
+                'dis_gender',
+                'PosEmo',
+                'NegEmo'
+            ]
+            df2_reduced[keep_cols].to_csv(save_file, index=False)
+            del df
+            return df2_reduced
+
+
 if __name__ == '__main__':
     # base_dir = r'C:\Users\sibo\Desktop\raw_data'
-    base_dir = r'C:\Users\sibo\Desktop\rough_cls'
-    process_dir = r'C:\Users\sibo\Desktop\rough_cls_v2'
+    # base_dir = r'C:\Users\sibo\Desktop\rough_cls'
+    # process_dir = r'C:\Users\sibo\Desktop\rough_cls_v2'
+    #
+    # usergeo=pd.read_csv('data/usergeo.csv', dtype={'uid': str})
+    # for dir in os.listdir(base_dir):
+    #     if dir.startswith('2'):
+    #         try:
+    #             exies = os.listdir(os.path.join(process_dir, dir))
+    #         except:
+    #             exies=[]
+    #         for csv_file in os.listdir(os.path.join(base_dir, dir)):
+    #             # if csv_file not in exies:
+    #             if csv_file not in []:
+    #             # if csv_file.endswith('.csv'):
+    #                 try:
+    #                     csv_path = os.path.join(base_dir, dir, csv_file)
+    #                     wa = WeiboAnalysis()
+    #                     wa.rough_merge_cls(csv_path=csv_path)
+    #                 except Exception as e:
+    #                     loguru.logger.error(e)
+    #                     loguru.logger.error("报错")
+    usergeo = pd.read_csv(r'C:\Users\sibo\Desktop\usergeo0206.csv', dtype={'uid': str})
+    del usergeo['Unnamed: 0']
 
-    usergeo=pd.read_csv('data/usergeo.csv', dtype={'uid': str})
+    base_dir = r'E:\Jiajun\sentiment\nationality_cls'
+    process_dir = r'E:\Jiajun\sentiment\merge_geo'
+    all_df = []
     for dir in os.listdir(base_dir):
         if dir.startswith('2'):
             try:
                 exies = os.listdir(os.path.join(process_dir, dir))
             except:
-                exies=[]
+                exies = []
             for csv_file in os.listdir(os.path.join(base_dir, dir)):
                 # if csv_file not in exies:
                 if csv_file not in []:
-                # if csv_file.endswith('.csv'):
+                    # if csv_file.endswith('.csv'):
                     try:
                         csv_path = os.path.join(base_dir, dir, csv_file)
                         wa = WeiboAnalysis()
-                        wa.rough_merge_cls(csv_path=csv_path)
+                        res = wa.merge_geo_national(
+                            csv_path=csv_path)
+                        all_df.append(res)
                     except Exception as e:
                         loguru.logger.error(e)
                         loguru.logger.error("报错")
-    # wa = WeiboAnalysis()
-    # wa.rough_cls(csv_path=r'C:\Users\sibo\Desktop\raw_data\2016\201602')
+
+    pd.concat(all_df, axis=0).reset_index(drop=True).to_csv(r'E:\Jiajun\sentiment\merge_geo\cat_1to4.csv')
